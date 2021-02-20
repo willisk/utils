@@ -818,7 +818,6 @@ def train(net, data_loader, loss_fn, optimizer,
                      fig_path=None,
                      track_per_batch=False,
                      track_grad_norm=track_grad_norm,
-                     print_grouped=False,
                      )
 
     print(flush=True, end='')
