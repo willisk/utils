@@ -765,6 +765,7 @@ def train(net, data_loader, loss_fn, optimizer,
           plot=False,
           use_amp=False,
           grad_norm_fn=None,
+          callback_fn=None,
           ):
     "Training Loop"
 
@@ -797,7 +798,9 @@ def train(net, data_loader, loss_fn, optimizer,
 
     print("Beginning training.", flush=True)
 
-    def callback_fn(epoch, metrics):
+    def save_model_cb(epoch, metrics):
+        if callback_fn:
+            callback_fn(epoch, metrics)
         if save_path is not None \
             and (save_every is not None
                  and epoch % save_every == 0
@@ -814,7 +817,7 @@ def train(net, data_loader, loss_fn, optimizer,
                      scheduler=scheduler,
                      use_amp=use_amp,
                      grad_norm_fn=grad_norm_fn,
-                     callback_fn=callback_fn,
+                     callback_fn=save_model_cb,
                      plot=plot,
                      fig_path=None,
                      track_per_batch=False,
