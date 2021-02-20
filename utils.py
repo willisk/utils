@@ -768,6 +768,7 @@ def train(net, data_loader, loss_fn, optimizer,
           ):
     "Training Loop"
 
+    device = next(net.parameters()).device
     save_path, load_path = search_drive(model_path, use_drive)
 
     init_epoch = 0
