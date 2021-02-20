@@ -947,7 +947,7 @@ def invert(data_loader, loss_fn, optimizer,
                         metrics[k][epoch] /= num_batches
 
             if callback_fn:
-                callback_fn(epoch + 1, res, metrics.iloc[step])
+                callback_fn(epoch + 1, metrics.iloc[step])
             # epoch end
 
     print(flush=True)
