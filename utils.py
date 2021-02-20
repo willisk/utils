@@ -864,6 +864,8 @@ def invert(data_loader, loss_fn, optimizer,
             info = res
             for k, v in info.items():
                 info[k] = v.item() if isinstance(v, torch.Tensor) else v
+        elif isinstance(res, tuple):
+            loss, info = res
         else:
             loss = res
             info = {'loss': loss.item()}
