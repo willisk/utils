@@ -763,10 +763,10 @@ def train(net, data_loader, criterion, optimizer,
           track_grad_norm=False,
           scheduler=None,
           plot=False,
-          use_amp=False):
+          use_amp=False,
+          grad_norm_fn=None,
+          ):
     "Training Loop"
-
-    device = next(net.parameters()).device
 
     save_path, load_path = search_drive(model_path, use_drive)
 
@@ -792,104 +792,37 @@ def train(net, data_loader, criterion, optimizer,
         if save_path:
             print("Path: " + save_path)
 
-    assert valid_data_loader(
-        data_loader), f"invalid data_loader: {data_loader}"
-
     net.train()
-
-    USE_AMP = device.type == 'cuda' and use_amp
-    if USE_AMP:
-        scaler = GradScaler()
-
-    TRACKING = None
-    if plot:
-        TRACKING = defaultdict(list, loss=[])
 
     print("Beginning training.", flush=True)
 
-    with tqdmEpoch(epochs, len(data_loader)) as pbar:
-        saved_epoch = 0
-        for epoch in range(1 + init_epoch, 1 + init_epoch + epochs):
-            total_count = 0.0
-            total_loss = 0.0
-            total_correct = 0.0
-            grad_total = 0.0
+    def callback_fn(epoch, metrics):
+        if save_path is not None \
+            and (save_every is not None
+                 and epoch % save_every == 0
+                 or epoch == init_epoch + epochs - 1):
+            torch.save({
+                'epoch': epoch,
+                'net_state_dict': net.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+            }, save_path)
+            print(f"Saving model at {save_path}.")
 
-            for inputs, labels in data_loader:
-                optimizer.zero_grad()
-
-                if USE_AMP:
-                    with autocast():
-                        outputs = net(inputs)
-                        loss = criterion(outputs, labels)
-                    scaler.scale(loss).backward()
-                    grad_scale = scaler.get_scale()
-                else:
-                    outputs = net(inputs)
-                    loss = criterion(outputs, labels)
-                    loss.backward()
-                    grad_scale = 1
-
-                if track_grad_norm:
-                    for param in net.parameters():
-                        grad_total += (param.grad.norm(2) / grad_scale).item()
-
-                if USE_AMP:
-                    scaler.step(optimizer)
-                    scaler.update()
-                else:
-                    optimizer.step()
-
-                batch_size = len(inputs)
-                total_count += batch_size
-                total_loss += loss.item() * batch_size
-                total_correct += count_correct(outputs, labels)
-                pbar.set_postfix(
-                    loss=total_loss / total_count,
-                    acc=f"{total_correct / total_count * 100:.0f}%",
-                    chkpt=saved_epoch,
-                    refresh=False,
-                )
-                pbar.update()
-
-            loss = total_loss / total_count
-            accuracy = total_correct / total_count
-            # grad_norm = grad_total  / total_count
-
-            if scheduler is not None:
-                scheduler.step(loss)
-
-            if TRACKING:
-                TRACKING['loss'].append(loss)
-                TRACKING['accuracy'].append(accuracy)
-                if track_grad_norm:
-                    TRACKING['|grad|'].append(grad_norm)
-
-            if save_path is not None \
-                and (save_every is not None
-                     and epoch % save_every == 0
-                     or epoch == init_epoch + epochs - 1):
-                torch.save({
-                    'epoch': epoch,
-                    'net_state_dict': net.state_dict(),
-                    'optimizer_state_dict': optimizer.state_dict(),
-                }, save_path)
-                saved_epoch = epoch
-
-            pbar.set_postfix(
-                loss=total_loss / total_count,
-                acc=f"{total_correct / total_count * 100:.0f}%",
-                chkpt=saved_epoch,
-            )
+    metrics = invert(data_loader, loss_fn, optimizer,
+                     steps=epochs,
+                     scheduler=scheduler,
+                     use_amp=use_amp,
+                     grad_norm_fn=grad_norm_fn,
+                     callback_fn=callback_fn,
+                     plot=plot,
+                     fig_path=None,
+                     track_per_batch=False,
+                     track_grad_norm=track_grad_norm,
+                     print_grouped=False,
+                     ):
 
     print(flush=True, end='')
     net.eval()
-
-    if TRACKING:
-        plot_metrics(TRACKING, step_start=init_epoch)
-        # plt.xlabel('epochs')
-        # plt.show()
-        return TRACKING
 
 
 def invert(data_loader, loss_fn, optimizer,
@@ -902,7 +835,6 @@ def invert(data_loader, loss_fn, optimizer,
            fig_path=None,
            track_per_batch=False,
            track_grad_norm=False,
-           print_grouped=False,
            ):
 
     assert valid_data_loader(
@@ -1019,3 +951,146 @@ def invert(data_loader, loss_fn, optimizer,
         plot_metrics(metrics, fig_path=fig_path, smoothing=0)
 
     return metrics
+
+# def train(net, data_loader, criterion, optimizer,
+#           epochs=10,
+#           save_every=20,
+#           model_path=None,
+#           use_drive=False,
+#           resume=False,
+#           reset=False,
+#           track_grad_norm=False,
+#           scheduler=None,
+#           plot=False,
+#           use_amp=False):
+#     "Training Loop"
+
+#     device = next(net.parameters()).device
+
+#     save_path, load_path = search_drive(model_path, use_drive)
+
+#     init_epoch = 0
+
+#     if load_path and os.path.exists(load_path) and not reset:
+#         checkpoint = torch.load(load_path, map_location=device)
+#         if 'net_state_dict' in checkpoint:
+#             net.load_state_dict(checkpoint['net_state_dict'])
+#         else:
+#             net.load_state_dict(checkpoint)
+#         if 'epoch' in checkpoint:
+#             init_epoch = checkpoint['epoch']
+#         if 'optimizer_state_dict' in checkpoint:
+#             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+#         print("Training Checkpoint restored: " + load_path)
+#         if not resume:
+#             net.eval()
+#             return
+#     else:
+#         if model_path:
+#             print("No Checkpoint found / Reset.")
+#         if save_path:
+#             print("Path: " + save_path)
+
+#     assert valid_data_loader(
+#         data_loader), f"invalid data_loader: {data_loader}"
+
+#     net.train()
+
+#     print("Beginning training.", flush=True)
+
+#     invert(data_loader, loss_fn, optimizer,
+#            steps=10,
+#            scheduler=None,
+#            use_amp=False,
+#            grad_norm_fn=None,
+#            callback_fn=None,
+#            plot=False,
+#            fig_path=None,
+#            track_per_batch=False,
+#            track_grad_norm=False,
+#            print_grouped=False,
+#            ):
+
+#     with tqdmEpoch(epochs, len(data_loader)) as pbar:
+#         saved_epoch = 0
+#         for epoch in range(1 + init_epoch, 1 + init_epoch + epochs):
+#             total_count = 0.0
+#             total_loss = 0.0
+#             total_correct = 0.0
+#             grad_total = 0.0
+
+#             for inputs, labels in data_loader:
+#                 optimizer.zero_grad()
+
+#                 if USE_AMP:
+#                     with autocast():
+#                         outputs = net(inputs)
+#                         loss = criterion(outputs, labels)
+#                     scaler.scale(loss).backward()
+#                     grad_scale = scaler.get_scale()
+#                 else:
+#                     outputs = net(inputs)
+#                     loss = criterion(outputs, labels)
+#                     loss.backward()
+#                     grad_scale = 1
+
+#                 if track_grad_norm:
+#                     for param in net.parameters():
+#                         grad_total += (param.grad.norm(2) / grad_scale).item()
+
+#                 if USE_AMP:
+#                     scaler.step(optimizer)
+#                     scaler.update()
+#                 else:
+#                     optimizer.step()
+
+#                 batch_size = len(inputs)
+#                 total_count += batch_size
+#                 total_loss += loss.item() * batch_size
+#                 total_correct += count_correct(outputs, labels)
+#                 pbar.set_postfix(
+#                     loss=total_loss / total_count,
+#                     acc=f"{total_correct / total_count * 100:.0f}%",
+#                     chkpt=saved_epoch,
+#                     refresh=False,
+#                 )
+#                 pbar.update()
+
+#             loss = total_loss / total_count
+#             accuracy = total_correct / total_count
+#             # grad_norm = grad_total  / total_count
+
+#             if scheduler is not None:
+#                 scheduler.step(loss)
+
+#             if TRACKING:
+#                 TRACKING['loss'].append(loss)
+#                 TRACKING['accuracy'].append(accuracy)
+#                 if track_grad_norm:
+#                     TRACKING['|grad|'].append(grad_norm)
+
+#             if save_path is not None \
+#                 and (save_every is not None
+#                      and epoch % save_every == 0
+#                      or epoch == init_epoch + epochs - 1):
+#                 torch.save({
+#                     'epoch': epoch,
+#                     'net_state_dict': net.state_dict(),
+#                     'optimizer_state_dict': optimizer.state_dict(),
+#                 }, save_path)
+#                 saved_epoch = epoch
+
+#             pbar.set_postfix(
+#                 loss=total_loss / total_count,
+#                 acc=f"{total_correct / total_count * 100:.0f}%",
+#                 chkpt=saved_epoch,
+#             )
+
+#     print(flush=True, end='')
+#     net.eval()
+
+#     if TRACKING:
+#         plot_metrics(TRACKING, step_start=init_epoch)
+#         # plt.xlabel('epochs')
+#         # plt.show()
+#         return TRACKING
