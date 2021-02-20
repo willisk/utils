@@ -77,9 +77,9 @@ def kfold_loaders(dataset, n_folds, train_transform=None, val_transform=None, **
         idx_train = perm[np.concatenate((np.arange(a), np.arange(b, N)))]
         val_set = torch.utils.data.Subset(dataset, idx_val)
         train_set = torch.utils.data.Subset(dataset, idx_train)
-        val_loader = torch.utils.data.DataLoader(
+        val_loader = DataLoaderDevice(
             val_set, **{'transform': train_transform, **kwargs})
-        train_loader = torch.utils.data.DataLoader(
+        train_loader = DataLoaderDevice(
             train_set, **{'transform': val_transform, **kwargs})
         yield (train_loader, val_loader)
 
