@@ -798,9 +798,9 @@ def train(net, data_loader, loss_fn, optimizer,
 
     print("Beginning training.", flush=True)
 
-    def save_model_cb(epoch, metrics):
+    def save_model_cb(epoch, *args):
         if callback_fn:
-            callback_fn(epoch, metrics)
+            callback_fn(epoch, *args)
         if save_path is not None \
             and (save_every is not None
                  and epoch % save_every == 0
@@ -871,8 +871,8 @@ def invert(data_loader, loss_fn, optimizer,
 
     print(flush=True)
 
-    if callback_fn:
-        callback_fn(0, None)
+    # if callback_fn:
+    #     callback_fn(0, None)
 
     with tqdmEpoch(steps, num_batches) as pbar:
         for epoch in range(steps):
@@ -947,7 +947,7 @@ def invert(data_loader, loss_fn, optimizer,
                         metrics[k][epoch] /= num_batches
 
             if callback_fn:
-                callback_fn(epoch + 1, metrics.iloc[step])
+                callback_fn(epoch + 1, res, metrics.iloc[step])
             # epoch end
 
     print(flush=True)
