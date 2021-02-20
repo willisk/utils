@@ -66,7 +66,25 @@ class DataLoaderDevice(DataLoader):
             yield inputs.to(self.device), labels.to(self.device)
 
 
-class timer():
+def kfold_loaders(dataset, n_folds, train_transform=None, val_transform=None, **kwargs):
+    L = len(dataset)
+    size_fold = L // n_folds
+    perm = np.random.permutation(L)
+    for i in range(n_folds):
+        a = i * size_fold
+        b = (i + 1) * size_fold
+        idx_val = perm[np.arange(a, b)]
+        idx_train = perm[np.concatenate((np.arange(a), np.arange(b, N)))]
+        val_set = torch.utils.data.Subset(dataset, idx_val)
+        train_set = torch.utils.data.Subset(dataset, idx_train)
+        val_loader = torch.utils.data.DataLoader(
+            val_set, **{'transform': train_transform, **kwargs})
+        train_loader = torch.utils.data.DataLoader(
+            train_set, **{'transform': val_transform, **kwargs})
+        yield (train_loader, val_loader)
+
+
+class Timer():
     def __init__(self):
         self.time = time.perf_counter()
 
@@ -414,74 +432,6 @@ def psnr(x, y):
     return - 10 * torch.log10(((x - y)**2).mean(dim=1))
 
 
-# @torch.no_grad()
-# def average_psnr(data_loader, invert_fn):
-#     out = count = 0
-#     for inputs, labels in data_loader:
-#         out += psnr(inputs, invert_fn(inputs)).sum().item()
-#         count += len(inputs)
-#     return out / count
-
-
-# from pytorch_lightning.metrics.functional import ssim
-
-
-# @torch.no_grad()
-# def average_ssim(data_loader, invert_fn):
-#     out = count = 0
-#     for images, labels in data_loader:
-#         images = to_zero_one(images.detach())
-#         restored = invert_fn(images)
-#         if images.shape[1] == 3:
-#             images = rbg_to_luminance(images)
-#             restored = rbg_to_luminance(restored)
-#         out += ssim(images, restored).item()
-#         count += 1
-#     return (out / count + 1) / 2
-
-
-# @torch.no_grad()
-# def average_haar_psi(data_loader, invert_fn):
-#     out = count = 0
-#     for inputs, labels in data_loader:
-#         images = inputs.detach().cpu().permute(0, 2, 3, 1).squeeze().numpy()
-#         restored_images = invert_fn(
-#             inputs.detach()).cpu().permute(0, 2, 3, 1).squeeze().numpy()
-#         for image, restored_image in zip(images, restored_images):
-#             out += haar_psi_numpy(image, restored_image)[0]
-#         count += len(inputs)
-#     return out / count
-
-
-def assert_mean_var(calculated_mean, calculated_var, recorded_mean, recorded_var, cc_n=None):
-    # check for infinites/nans where they shouldn't be
-    if cc_n is not None:
-        assert recorded_mean[cc_n.squeeze() != 0].isfinite().all(), \
-            "recorded mean has invalid entries"
-        assert recorded_var[cc_n.squeeze() != 0].isfinite().all(), \
-            "recorded var has invalid entries"
-
-    assert recorded_mean.shape == calculated_mean.shape, \
-        "\ncalculated mean shape: {}".format(calculated_mean.shape) \
-        + "\nrecorded mean shape: {}".format(recorded_mean.shape)
-    assert recorded_var.shape == calculated_var.shape, \
-        "\ncalculated var shape: {}".format(calculated_var.shape) \
-        + "\nrecorded var shape: {}".format(recorded_var.shape)
-
-    assert torch.allclose(recorded_mean, calculated_mean, atol=1e-7, equal_nan=True), (
-        "\nmean max error: {}".format(
-            (recorded_mean - calculated_mean).abs().max())
-        + "\ncalculated mean: \n{}".format(calculated_mean)
-        + "\nrecorded mean: \n{}".format(recorded_mean)
-    )
-    assert torch.allclose(recorded_var, calculated_var, equal_nan=True), (
-        "\nvar max error: {}".format(
-            (recorded_var - calculated_var).abs().max())
-        + "\ncalculated var: \n{}".format(calculated_var)
-        + "\nrecorded var: \n{}".format(recorded_var)
-    )
-
-
 def set_pwd(pwd):
     global __pwd
     __pwd = pwd
@@ -818,52 +768,6 @@ def plot_metrics(metrics, title='metrics', fig_path=None, step_start=1, plot_ran
 # %%
 
 
-def scatter_matrix(data, labels,
-                   feature_names=[], fig=None, **kwargs):
-    ndata, ncols = data.shape
-    data = data.T
-    if fig is None:
-        fig, axes = plt.subplots(
-            nrows=ncols, ncols=ncols, figsize=(12, 12))
-        fig.subplots_adjust(hspace=0.05, wspace=0.05)
-    else:
-        axes = np.array(fig.axes).reshape(4, 4)
-
-    for ax in axes.flat:
-        ax.xaxis.set_visible(False)
-        ax.yaxis.set_visible(False)
-
-        if ax.is_first_col():
-            ax.yaxis.set_ticks_position('left')
-        if ax.is_last_col():
-            ax.yaxis.set_ticks_position('right')
-        if ax.is_first_row():
-            ax.xaxis.set_ticks_position('top')
-        if ax.is_last_row():
-            ax.xaxis.set_ticks_position('bottom')
-
-    # Plot the data.
-    for i, j in zip(*np.triu_indices_from(axes, k=1)):
-        for x, y in [(i, j), (j, i)]:
-            if 'c' in kwargs:
-                axes[x, y].scatter(data[x], data[y], **kwargs)
-            else:
-                axes[x, y].scatter(data[x], data[y],
-                                   c=labels, **kwargs)
-            # plot_prediction2d(data_2d, labels, net,
-            #                   num=100, axis=axes[x, y], cmap=cmap)
-
-    for i, label in enumerate(feature_names):
-        axes[i, i].annotate(label, (0.5, 0.5), xycoords='axes fraction',
-                            ha='center', va='center')
-
-    for i, j in zip(range(ncols), itertools.cycle((-1, 0))):
-        axes[j, i].xaxis.set_visible(True)
-        axes[i, j].yaxis.set_visible(True)
-
-    return fig
-
-
 def plot_contourf_data(data, func, n_grid=400, scale_grid=1, cmap='Spectral', alpha=.3, levels=None, contour=False, colorbar=False):
     x_min, x_max = data[:, 0].min() - 0.5, data[:, 0].max() + 0.5
     y_min, y_max = data[:, 1].min() - 0.5, data[:, 1].max() + 0.5
@@ -894,88 +798,6 @@ def plot_contourf(x_min, x_max, y_min, y_max, func, n_grid=400, cmap='Spectral',
     if levels is not None:
         plt.colorbar(cf)
 
-    # MC Integration
-    # d_x = torch.as_tensor(x_max - x_min) / n_grid
-    # d_y = torch.as_tensor(y_max - y_min) / n_grid
-    # I = ((torch.as_tensor(Z)).sum() * d_x * d_y).item()
-    # print(f"MC Integral: {I}")
-
-
-def make_grid(X, labels=None, description=None, title_fmt="label: {}", ncols=3, colors=None):
-    L = len(X)
-    nrows = -(-L // ncols)
-    plt.figure(figsize=(ncols, nrows))
-
-    if title_fmt is not None and title_fmt != "" and labels is not None:
-        hspace = 1.0
-    else:
-        hspace = 0.0
-
-    gs = gridspec.GridSpec(nrows, ncols,
-                           wspace=0.0,
-                           hspace=hspace,
-                           #    top=1. - 0.5 / (nrows + 1), bottom=0.5 / (nrows + 1),
-                           #    left=0.5 / (ncols + 1), right=1 - 0.5 / (ncols + 1)
-                           )
-    frame_plot = []
-    for n in range(nrows):
-        for m in range(ncols):
-            i = n * ncols + m
-            if i >= L:
-                break
-            ax = plt.subplot(gs[n, m])
-            # plt.tight_layout()
-            im = ax.imshow(X[i].squeeze(), interpolation='none')
-            if labels is not None:
-                color = 'k' if colors is None else colors[i]
-                plt.title(title_fmt.format(labels[i]), color=color)
-            plt.xticks([])
-            plt.yticks([])
-            ax.set_xticklabels([])
-            ax.set_yticklabels([])
-            frame_plot.append(im)
-            if description is not None and n == nrows - 1 and m == ncols // 2:
-                title = ax.text(0.22, -.3, description,
-                                size=plt.rcParams["axes.titlesize"],
-                                # ha="center",
-                                transform=ax.transAxes
-                                )
-                frame_plot.append(title)
-    # plt.subplots_adjust(wspace=0, hspace=0)
-
-    return frame_plot
-
-
-def make_grid_ani(frames, **kwargs):
-    ani_frames = []
-    for X in frames:
-        frame_plot = make_grid(X, **kwargs)
-        ani_frames.append(frame_plot)
-    return ani_frames
-
-
-def in_product_outer(nrows, ncols, i):
-    x = i % nrows + 1
-    y = i // nrows + 1
-    return x == 1 or x == ncols or y == 1 or y == nrows
-
-
-def in_product_edge(nrows, ncols, i):
-    x = i % nrows + 1
-    y = i // nrows + 1
-    return (x == 1 and y == 1
-            or x == nrows and y == 1
-            or x == 1 and y == ncols
-            or x == nrows and y == ncols)
-
-
-def subplots_labels(x_labels, y_labels):
-    for i, ax in enumerate(plt.gcf().axes):
-        ax.set(xlabel=x_labels[i % len(x_labels)],
-               ylabel=y_labels[i // len(y_labels)])
-    for ax in plt.gcf().axes:
-        ax.label_outer()
-
 
 def categorical_colors(num_classes):
     cmap = matplotlib.cm.get_cmap('Spectral')
@@ -988,15 +810,6 @@ def categorical_cmaps(num_classes):
             for c in range(num_classes)]
 
 
-# def DKL(P, Q, n_samples=1e4):
-#     X = P.sample(n_samples)
-#     return P.logpdf(X).mean() - Q.logpdf(X).mean()
-
-
-# def JS(P, Q, n_samples=1e4):
-#     M = P + Q
-#     return 1 / 2 * (DKL(P, M, n_samples) + DKL(Q, M, n_samples))
-
 def logsumexp(a, dim=None, b=None):
     a = torch.as_tensor(a)
     a_max = a.max().item() if dim is None else torch.max(a, dim=dim)[0]
@@ -1006,66 +819,6 @@ def logsumexp(a, dim=None, b=None):
     else:
         out = (a - a_max).exp().sum(dim=0).log()
     return out + a_max
-
-
-# stupid matplotlib....
-matplotlib_axes_logger.setLevel('ERROR')
-
-
-def plot_stats(X, Y=None, colors=None):
-    if Y is None:
-        if isinstance(X, list):
-            mean, var = [x.mean(dim=0) for x in X], [x.var(dim=0) for x in X]
-        else:
-            mean, var = [X.mean(dim=0)], [X.var(dim=0)]
-    else:
-        mean, var, _ = c_mean_var(X, Y, Y.max() + 1)
-    plot_stats_mean_var(mean, var, colors=colors)
-
-
-def plot_stats_mean_var(mean, var, colors=None):
-    if colors is None:
-        colors = categorical_colors(len(mean))
-    Ellipse = matplotlib.patches.Ellipse
-    for m, v, c in zip(mean, var, colors):
-        s = torch.sqrt(v) * 2
-        ell = Ellipse(m, s[0], s[1], edgecolor=c, lw=1, fill=False)
-        plt.gca().add_artist(ell)
-        plt.scatter(m[0], m[1], color=c, edgecolors='k', marker='^')
-
-
-def plot_random_projections(RP, X_proj, mean, Y=None, color='r', marker='o', scatter=True):
-    if Y is None:
-        _plot_random_projections(
-            RP, X_proj, mean=mean, color=color, marker=marker, scatter=scatter,)
-    else:
-        n_classes = len(mean)
-        if n_classes == 2:
-            marker = ['+', 'd']
-        # cmaps = categorical_colors(Y.max().item() + 1)
-        for c, m in zip(Y.unique(), marker):
-            _plot_random_projections(RP, X_proj[Y == c],
-                                     mean=mean[c],
-                                     color=color,
-                                     marker=m,
-                                     scatter=scatter,)
-
-
-def _plot_random_projections(RP, X_proj, mean, color='r', marker='o', scatter=True):
-    for rp, x_p in zip(RP.T, X_proj.T):
-        m, s = x_p.mean(), x_p.var().sqrt()
-        rp_m = rp * m + mean
-        start, end = rp_m - rp * s, rp_m + rp * s
-        plt.plot(*list(zip(start, end)), color=color)
-        plt.plot(*rp_m, color='black', marker='x')
-        if scatter:
-            X_proj_abs = mean + rp * x_p.reshape(-1, 1)
-            _plot = plt.scatter(*X_proj_abs.T,
-                                color=color, alpha=0.1, marker=marker)
-    if scatter:
-        _plot.set_label('random projected')
-    # for rp in RP.T:
-    #     plt.plot(*list(zip(mean, mean + rp * 3)), c='black')
 
 
 def make_table(data, out=None, row_name="", sort_rows=False, spacing=2):
