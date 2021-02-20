@@ -942,7 +942,6 @@ def invert(data_loader, loss_fn, optimizer,
                     metrics['step'][batch_total] = (
                         batch_total + 1) / num_batches
                 # batch end
-                print("-> batch_end")
 
             if not track_per_batch:
                 for k, v in metrics.items():
@@ -951,7 +950,6 @@ def invert(data_loader, loss_fn, optimizer,
 
             if callback_fn:
                 callback_fn(epoch + 1, metrics.iloc[step])
-            print("-> epoch_end")
             # epoch end
 
     print(flush=True)
