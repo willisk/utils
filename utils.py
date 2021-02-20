@@ -12,7 +12,7 @@ import torch
 import torch.nn as nn
 import torchvision
 from torch.cuda.amp import autocast, GradScaler
-from torch.utils.data import DataLoaderDeviceoader
+from torch.utils.data import DataLoader
 
 import pandas as pd
 
@@ -193,7 +193,7 @@ def print_net_accuracy(net, data_loader, estimate_epochs=-1):
     print(f"net accuracy: {accuracy * 100:.1f}%")
 
 
-@ torch.no_grad()
+@torch.no_grad()
 def net_accuracy_batch(net, inputs, labels):
     outputs = net(inputs)
     return count_correct(outputs, labels) / len(inputs)
@@ -1266,4 +1266,3 @@ def invert(data_loader, loss_fn, optimizer,
         plot_metrics(metrics, fig_path=fig_path, smoothing=0)
 
     return metrics
-
