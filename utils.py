@@ -753,7 +753,7 @@ def count_params(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
-def train(net, data_loader, criterion, optimizer,
+def train(net, data_loader, loss_fn, optimizer,
           epochs=10,
           save_every=20,
           model_path=None,
@@ -819,10 +819,12 @@ def train(net, data_loader, criterion, optimizer,
                      track_per_batch=False,
                      track_grad_norm=track_grad_norm,
                      print_grouped=False,
-                     ):
+                     )
 
     print(flush=True, end='')
     net.eval()
+
+    return metrics
 
 
 def invert(data_loader, loss_fn, optimizer,
