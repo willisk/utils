@@ -837,13 +837,14 @@ def train(net, data_loader, loss_fn, optimizer,
             init_epoch = checkpoint['epoch']
         if 'optimizer_state_dict' in checkpoint:
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        print("Training Checkpoint restored: " + load_path)
+        print(
+            f"Training checkpoint (epoch: {init_epoch}) restored: {load_path}")
         if not resume:
             net.eval()
             return
     else:
         if model_path:
-            print("No Checkpoint found / Reset.")
+            print("No checkpoint found / reset.")
         if save_path:
             print("Path: " + save_path)
 
@@ -859,11 +860,11 @@ def train(net, data_loader, loss_fn, optimizer,
                  and epoch % save_every == 0
                  or epoch == init_epoch + epochs - 1):
             torch.save({
-                'epoch': epoch,
+                'epoch': init_epoch + epoch,
                 'net_state_dict': net.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
             }, save_path)
-            print(f"Saving model at {save_path}.")
+            print(f"Saving model at {save_path}")
 
     metrics = invert(data_loader, loss_fn, optimizer,
                      steps=epochs,
