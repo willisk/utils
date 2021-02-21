@@ -19,6 +19,8 @@ import pandas as pd
 import inspect
 from functools import reduce, wraps
 
+from shutil import copy2
+
 import itertools
 from itertools import product
 from collections import defaultdict
@@ -29,18 +31,18 @@ from functools import partial
 
 
 if __name__ == '__main__':
-    PWD = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # PWD = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    PWD = os.path.dirname(os.path.abspath(__file__))
+    print(PWD)
     sys.path.append(PWD)
 
-# from .debug import debug
-from .debug import debug
-# from .haarPsi import haar_psi_numpy
+from .debug import debug  # pylint: disable=relative-beyond-top-level
 
 from tqdm import tqdm
 
 from matplotlib.axes._axes import _log as matplotlib_axes_logger
 
-__pwd = None
+# __pwd = os.path.split(os.getcwd())[1]
 
 
 class tqdmEpoch(tqdm):
@@ -432,28 +434,36 @@ def psnr(x, y):
     return - 10 * torch.log10(((x - y)**2).mean(dim=1))
 
 
-def set_pwd(pwd):
-    global __pwd
-    __pwd = pwd
+def get_drive_cwd():
+    pwd = os.path.split(os.getcwd())[1]
+
+    last_dir = None
+    dir = os.path.abspath('.')
+    while(dir != last_dir):
+        if os.path.exists(os.path.join(dir, 'drive')):
+            return os.path.join(dir, 'drive/My Drive/Colab', pwd)
+        last_dir = dir
+        dir = os.path.dirname(dir)
+    return None
 
 
-def search_drive(path, use_drive=True):
-
-    pwd = __pwd if __pwd else "Thesis"
+def search_drive(path, use_drive=True, upload=False):
 
     if path is not None:
         if use_drive:
-            if not path[0] == '/':
-                path = os.path.abspath(path)
-            drive_root = path.split(pwd)[0] + 'drive/My Drive/'
-            drive_path = path.replace(pwd, 'drive/My Drive/' + pwd)
+            rel_path = path
+            path = os.path.abspath(path)
 
             save_path, load_path = path, path
+            drive_root = get_drive_cwd()
 
             if os.path.exists(drive_root):  # drive connected
-                save_path = drive_path
-                if os.path.exists(drive_path):
-                    load_path = drive_path
+                save_path = os.path.join(drive_root, rel_path)
+                if os.path.exists(save_path):
+                    load_path = save_path
+                else:
+                    if os.path.exists(load_path) and upload:
+                        copy2(load_path, save_path)
 
             for path in [save_path, load_path]:  # make sure directories exist
                 _dir = os.path.dirname(path)
@@ -466,6 +476,49 @@ def search_drive(path, use_drive=True):
             os.makedirs(save_dir)
         return save_path, load_path
     return None, None
+
+
+def sync_drive(path, verbose=True):
+
+    drive_root = get_drive_cwd()
+    assert drive_root is not None, "Err: Drive not found"
+    drive_path = os.path.join(drive_root, path)
+    if os.path.isdir(path):
+        files = set(
+            os.path.join(path, name).replace(drive_root + '/', '')
+            for path, subdirs, files in list(os.walk(path)) + list(os.walk(drive_path))
+            for name in files
+        )
+    else:
+        files = [path]
+    assert len(files), f"Err: no file found at {path}."
+    for file in files:
+        src = os.path.abspath(file)
+        dest = os.path.join(drive_root, file)
+        os.makedirs(os.path.dirname(src), exist_ok=True)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        if os.path.exists(src) and not os.path.exists(dest):
+            if verbose:
+                print(f"Syncing {src} -> {dest}")
+            copy2(src, dest)
+        elif not os.path.exists(src) and os.path.exists(dest):
+            if verbose:
+                print(f"Syncing {src} <- {dest}")
+            copy2(dest, src)
+        elif os.path.exists(src) and os.path.exists(dest):
+            src_time = os.path.getmtime(src)
+            dest_time = os.path.getmtime(dest)
+            if src_time == dest_time:
+                if verbose:
+                    print(f"Skip {src} == {dest}")
+            elif src_time > dest_time:
+                if verbose:
+                    print(f"Syncing {src} -> {dest}")
+                copy2(src, dest)
+            else:
+                if verbose:
+                    print(f"Syncing {src} <- {dest}")
+                copy2(dest, src)
 
 
 def valid_data_loader(data_loader):
