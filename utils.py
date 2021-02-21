@@ -36,7 +36,7 @@ if __name__ == '__main__':
     print(PWD)
     sys.path.append(PWD)
 
-from .debug import debug  # pylint: disable=relative-beyond-top-level
+from debug import debug  # pylint: disable=relative-beyond-top-level
 
 from tqdm import tqdm
 
@@ -478,19 +478,19 @@ def search_drive(path, use_drive=True, upload=False):
     return None, None
 
 
-def sync_drive(path, verbose=True):
+def sync_drive(path, verbose=1):
 
     drive_root = get_drive_cwd()
     assert drive_root is not None, "Err: Drive not found"
     drive_path = os.path.join(drive_root, path)
-    if os.path.isdir(path):
+    if os.path.isfile(path):
+        files = [path]
+    else:
         files = set(
             os.path.join(path, name).replace(drive_root + '/', '')
             for path, subdirs, files in list(os.walk(path)) + list(os.walk(drive_path))
             for name in files
         )
-    else:
-        files = [path]
     assert len(files), f"Err: no file found at {path}."
     for file in files:
         src = os.path.abspath(file)
@@ -508,8 +508,9 @@ def sync_drive(path, verbose=True):
         elif os.path.exists(src) and os.path.exists(dest):
             src_time = os.path.getmtime(src)
             dest_time = os.path.getmtime(dest)
-            if src_time == dest_time:
-                if verbose:
+            # print(f"src: {time.ctime(src_time)} dest: {time.ctime(dest_time)}")
+            if (abs(src_time - dest_time) < 20):
+                if verbose > 2:
                     print(f"Skip {src} == {dest}")
             elif src_time > dest_time:
                 if verbose:
