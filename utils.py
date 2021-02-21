@@ -33,10 +33,9 @@ from functools import partial
 if __name__ == '__main__':
     # PWD = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     PWD = os.path.dirname(os.path.abspath(__file__))
-    print(PWD)
     sys.path.append(PWD)
 
-from debug import debug  # pylint: disable=relative-beyond-top-level
+from utils.debug import debug  # pylint: disable=relative-beyond-top-level
 
 from tqdm import tqdm
 
