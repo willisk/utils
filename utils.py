@@ -854,7 +854,7 @@ def train(net, data_loader, loss_fn, optimizer,
 
     def save_model_cb(epoch, *args):
         if callback_fn:
-            callback_fn(epoch, *args)
+            callback_fn(epoch, init_epoch + epoch, *args)
         if save_path is not None \
             and (save_every is not None
                  and epoch % save_every == 0
