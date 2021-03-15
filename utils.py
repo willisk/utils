@@ -31,11 +31,10 @@ from functools import partial
 
 
 if __name__ == '__main__':
-    # PWD = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     PWD = os.path.dirname(os.path.abspath(__file__))
     sys.path.append(PWD)
 
-from utils.debug import debug  # pylint: disable=relative-beyond-top-level
+from utils.debug import debug  # pylint: disable=import-error
 
 from tqdm import tqdm
 

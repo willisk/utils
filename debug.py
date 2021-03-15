@@ -2,6 +2,7 @@ import os
 import sys
 
 import torch
+import numpy as np
 import inspect
 from functools import reduce, wraps
 from collections.abc import Iterable
@@ -17,8 +18,9 @@ _NONE = "__UNSET_VARIABLE__"
 
 def debug_init():
     debug.verbose = 2
+    debug.disable = False
     debug.silent = False
-    debug.expand_ignore = ["DataLoaderDeviceoader"]
+    debug.expand_ignore = ["DataLoader"]
     debug.raise_exception = True
     debug.full_stack = True
     debug.restore_defaults_on_exception = not interactive_notebook
@@ -28,6 +30,53 @@ def debug_init():
 
 def is_iterable(x):
     return isinstance(x, Iterable)
+
+
+def ndarray_repr(t, assert_all=False):
+    exception_encountered = False
+    info = []
+    shape = tuple(t.shape)
+    single_entry = shape == () or shape == (1,)
+    if single_entry:
+        info.append(f"[{t.item():.4f}]")
+    else:
+        info.append(f"({', '.join(map(repr, shape))})")
+    invalid_sum = (~np.isfinite(t)).sum().item()
+    if invalid_sum:
+        info.append(
+            f"{invalid_sum} INVALID ENTR{'Y' if invalid_sum == 1 else 'IES'}")
+        exception_encountered = True
+    if debug.verbose > 1:
+        if not invalid_sum and not single_entry:
+            info.append(f"|x|={np.linalg.norm(t):.1f}")
+            if t.size:
+                info.append(f"x in [{t.min():.1f}, {t.max():.1f}]")
+    if debug.verbose and t.dtype != np.float:
+        info.append(f"dtype={str(t.dtype)}".replace("'", ''))
+    if assert_all:
+        assert_val = t.all()
+        if not assert_val:
+            exception_encountered = True
+    if assert_all and not exception_encountered:
+        output = "passed"
+    else:
+        if assert_all and not assert_val:
+            output = f"ndarray({info[0]})"
+        else:
+            output = f"ndarray({', '.join(info)})"
+    if exception_encountered and (not hasattr(debug, 'raise_exception') or debug.raise_exception):
+        if debug.restore_defaults_on_exception:
+            debug.raise_exception = False
+            debug.silent = False
+        debug.x = t
+        msg = output
+        debug._stack += output
+        if debug._stack and '\n' in debug._stack:
+            msg += '\nSTACK:  ' + debug._stack
+        if assert_all:
+            assert assert_val, "Assert did not pass on " + msg
+        raise Exception("Invalid entries encountered in " + msg)
+    return output
 
 
 def tensor_repr(t, assert_all=False):
@@ -97,7 +146,7 @@ def _debug_crash_save():
         debug.args = debug._last_args
         debug.func = debug._last_call
 
-        @wraps(debug.func)
+        @ wraps(debug.func)
         def _recall(*args, **kwargs):
             call_args = {**debug.args, **kwargs,
                          **dict(zip(debug._last_args_sig, args))}
@@ -120,6 +169,8 @@ def _debug_log(output, var=_NONE, indent='', assert_true=False):
             _debug_log('None')
         elif isinstance(var, str):
             _debug_log(f"'{var}'")
+        elif 'numpy.ndarray' in str(type(var)):
+            _debug_log(ndarray_repr(var, assert_true))
         elif isinstance(var, torch.Tensor):
             _debug_log(tensor_repr(var, assert_true))
         elif is_iterable(var):
@@ -161,6 +212,9 @@ def _debug_log(output, var=_NONE, indent='', assert_true=False):
 
 def debug(arg, assert_true=False):
 
+    if debug.disable:
+        return arg
+
     if not hasattr(arg, '__call__'):
         if debug._indent == 0:
             debug._stack = ""
@@ -189,6 +243,9 @@ def debug(arg, assert_true=False):
 
     @wraps(func)
     def _func(*args, **kwargs):
+        if debug.disable:
+            return func(*args, **kwargs)
+
         if debug._indent == 0:
             debug._stack = ""
         stack_before = debug._stack
